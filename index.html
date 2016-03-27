@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset=utf-8 />
+    <title>American Energy</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+    <script src="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.js"></script>
+
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.css" />
+    <link href='http://fonts.googleapis.com/css?family=Lato' rel='stylesheet' type='text/css'>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000000;
+            font-family: Lato, sans-serif;
+            color: #0D0000;
+        }
+        
+        header {
+            padding: 6px 10%;
+        }
+        
+        h1 {
+            display: inline-block;
+            margin-right: 20px;
+            color: #ffffff;
+        }
+        
+        h2 {
+            display: inline-block;
+            color: #ffffff;
+        }
+        
+        #map {
+            width: 80%;
+            height: 540px;
+            margin: 10px auto;
+        }
+        
+        footer {
+            padding: 6px 10%;
+            width: 80%;
+        }
+        
+        p {
+            font-size: 1em;
+            color: #ffffff;
+        }
+        a {
+                color: #ECB529;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Earth, Water, Wind</h1>
+        <h2>Where do they power the USA?</h2>
+    </header>
+
+    <div id='map'></div>
+
+    <footer>
+        <p>Map authored by Hallie Liu</p>
+        <p>This map shows which power plants within the United States use coal, wind, or water as fuel sources. Circles denote plant location; size denotes power output in megawatts; color indicates which fuel source is represented. Fuel source layers can be toggled using the check boxes in the upper righthand corner. Click on a circle for more information about a specific plant; click on a blank space to limit the selection to power plants within a 500 km radius. Some plants may have multiple fuel sources. Power plant information courtesy of the EIA, and available <a href=http://www.eia.gov/electricity/data/eia923/>here</a>.</p>
+    </footer>
+
+    <script src="power-plants.js"></script>
+    <script>
+        var map = L.map('map', {
+            center: [36, -94],
+            zoom: 4,
+        });
+
+        var tiles = L.tileLayer('http://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="http://cartodb.com/attributions">CartoDB</a>',
+            subdomains: 'abcd',
+            maxZoom: 19
+        });
+
+        tiles.addTo(map);
+
+        var defaultStyle = {
+            color: '#990068',
+            fillColor: '#990068',
+            weight: 1,
+            stroke: 1,
+            fillOpacity: .6,
+            radius: 2
+        }
+
+        var ppLayers = {
+            coalLayer: {
+                source: "Coal",
+                color: "#ECB529"
+            },
+            hydroLayer: {
+                source: "Hydro",
+                color: "#5386e4"
+            },
+            windLayer: {
+                source: "Wind",
+                color: "#ffffff"
+            }
+        };
+
+        var geoJsonLayers = {};
+         var spotLight = L.circle([100, 100], 0, {
+            fillColor: '#ffffff',
+            color: '#ffffff',
+            stroke: 0,
+            weight: 1,
+            fillOpacity: 0
+        } ).addTo(map);
+
+        for (var layer in ppLayers) {
+            geoJsonLayers[layer] = L.geoJson(plants, {
+                pointToLayer: function (feature, latlng) {
+                    return L.circleMarker(latlng, defaultStyle);
+                },
+
+                filter: function (feature) {
+                    if (feature.properties.fuel_source[ppLayers[layer].source]) {
+                        return feature;
+                    }
+                },
+
+                style: function (feature) {
+                    return {
+                        color: ppLayers[layer].color,
+                        fillColor: ppLayers[layer].color,
+                        radius: getRadius(feature.properties.capacity_mw)
+                    }
+                },
+
+                onEachFeature: function (feature, layer) {
+                    layer.on('mouseover', function () {
+                        layer.setStyle({
+                            fillColor: '#990068'
+                        })
+                    });
+                    layer.on('mouseout', function () {
+                        layer.setStyle({
+                            fillColor: layer.color
+                        })
+                    });
+                    layer.bindPopup('<b>' + feature.properties.plant_name + '</b><br>' + feature.properties.capacity_mw + ' MW');
+                }
+            }).addTo(map);
+        }
+
+        var layerControl = {
+            "<b style = 'text-shadow: 1px 1px #ECB529'> Coal</b>": geoJsonLayers.coalLayer,
+            "<b style = 'color: #5386e4'>Hydro</b>": geoJsonLayers.hydroLayer,
+            "<b style = 'text-shadow: 0 0 5px #000000; color: white'>Wind </b>": geoJsonLayers.windLayer
+        }
+        L.control.layers(null, layerControl, {collapsed: false}).addTo(map);
+        
+        map.on('click', function (e) {
+            var spotlight = e.latlng;
+            spotLight.setStyle({fillOpacity: .1})
+                     .setLatLng(spotlight)
+                     .setRadius(550000);
+            for (var layer in geoJsonLayers) {
+                geoJsonLayers[layer].eachLayer(function (layer) {
+                    var distance = e.latlng.distanceTo(layer.getLatLng()) / 1000;
+            
+                    if (distance > 500) {
+                        layer.setStyle({
+                            stroke: false,
+                            fill: false
+                        });
+                    } else {
+                        layer.setStyle({
+                            stroke: true,
+                            fill: true
+                        });
+                        var newPopup = '<b>' + layer.feature.properties.plant_name + '</b><br>' + 
+                            layer.feature.properties.capacity_mw + ' MW'+ "<br>" + 
+                            distance.toLocaleString() + " km from the click point";
+                        layer.bindPopup(newPopup);
+                    };
+                    
+                });
+            };
+        });
+
+        
+        
+        function getRadius(value) {
+            var radius = Math.sqrt(value / Math.PI);
+            return radius * .6;
+        }
+        
+    </script>
+
+</body>
+
+</html>
